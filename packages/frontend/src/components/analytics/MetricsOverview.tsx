@@ -1,7 +1,6 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import clsx from 'clsx';
 
 interface MetricsOverviewProps {
   metrics: {
@@ -12,58 +11,50 @@ interface MetricsOverviewProps {
 }
 
 export function MetricsOverview({ metrics }: MetricsOverviewProps) {
-  const metricCards = [
+  const metricsList = [
     {
-      label: 'Avg Latency',
-      value: `${metrics.avgLatency}ms`,
-      status: metrics.avgLatency < 200 ? 'good' : metrics.avgLatency < 500 ? 'warning' : 'critical',
+      label: 'Average Latency',
+      value: `${metrics.avgLatency.toFixed(0)}ms`,
+      status: metrics.avgLatency < 500 ? 'good' : 'warning',
     },
     {
       label: 'P95 Latency',
-      value: `${metrics.p95Latency}ms`,
-      status: metrics.p95Latency < 500 ? 'good' : metrics.p95Latency < 1000 ? 'warning' : 'critical',
+      value: `${metrics.p95Latency.toFixed(0)}ms`,
+      status: metrics.p95Latency < 1000 ? 'good' : 'warning',
     },
     {
       label: 'Error Rate',
       value: `${(metrics.errorRate * 100).toFixed(2)}%`,
-      status: metrics.errorRate < 0.01 ? 'good' : metrics.errorRate < 0.05 ? 'warning' : 'critical',
+      status: metrics.errorRate < 0.01 ? 'good' : 'warning',
     },
   ];
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 backdrop-blur"
     >
       <h3 className="text-lg font-semibold text-white mb-4">Performance Metrics</h3>
-      <div className="grid grid-cols-3 gap-4">
-        {metricCards.map((metric, idx) => (
-          <div
+      <div className="space-y-4">
+        {metricsList.map((metric, idx) => (
+          <motion.div
             key={idx}
-            className={clsx(
-              'p-4 rounded-lg border',
-              metric.status === 'good'
-                ? 'bg-green-900/20 border-green-700/50'
-                : metric.status === 'warning'
-                  ? 'bg-yellow-900/20 border-yellow-700/50'
-                  : 'bg-red-900/20 border-red-700/50',
-            )}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: idx * 0.1 }}
+            className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg border border-slate-600"
           >
-            <p className="text-sm text-gray-400 mb-2">{metric.label}</p>
-            <p
-              className={clsx(
-                'text-2xl font-bold',
-                metric.status === 'good'
-                  ? 'text-green-400'
-                  : metric.status === 'warning'
-                    ? 'text-yellow-400'
-                    : 'text-red-400',
-              )}
-            >
-              {metric.value}
-            </p>
-          </div>
+            <span className="text-gray-300">{metric.label}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-semibold text-white">{metric.value}</span>
+              <span
+                className={`w-3 h-3 rounded-full ${
+                  metric.status === 'good' ? 'bg-green-500' : 'bg-yellow-500'
+                }`}
+              />
+            </div>
+          </motion.div>
         ))}
       </div>
     </motion.div>

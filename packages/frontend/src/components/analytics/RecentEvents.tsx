@@ -1,7 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ErrorLog } from '@/types/analytics';
 import clsx from 'clsx';
 
@@ -10,46 +9,39 @@ interface RecentEventsProps {
 }
 
 export function RecentEvents({ errors }: RecentEventsProps) {
+  const severityColors = {
+    CRITICAL: 'bg-red-900/20 text-red-300 border-red-500/50',
+    ERROR: 'bg-orange-900/20 text-orange-300 border-orange-500/50',
+    WARNING: 'bg-yellow-900/20 text-yellow-300 border-yellow-500/50',
+  };
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 backdrop-blur h-full"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 backdrop-blur h-full flex flex-col"
     >
       <h3 className="text-lg font-semibold text-white mb-4">Recent Errors</h3>
-      <div className="space-y-3 overflow-y-auto max-h-96">
-        {errors.length > 0 ? (
-          errors.map((error, idx) => (
+      <div className="space-y-3 flex-1 overflow-y-auto">
+        <AnimatePresence>
+          {errors.slice(0, 10).map((error, idx) => (
             <motion.div
-              key={idx}
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
+              key={error.id}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
               transition={{ delay: idx * 0.05 }}
-              className="flex items-start gap-3 p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition"
+              className={clsx(
+                'p-3 rounded-lg border',
+                severityColors[error.severity as keyof typeof severityColors] ||
+                  'bg-gray-900/20 text-gray-300 border-gray-500/50',
+              )}
             >
-              <div className="mt-1">
-                {error.severity === 'CRITICAL' ? (
-                  <XCircle className="w-5 h-5 text-red-400" />
-                ) : error.severity === 'ERROR' ? (
-                  <AlertCircle className="w-5 h-5 text-yellow-400" />
-                ) : (
-                  <CheckCircle className="w-5 h-5 text-blue-400" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{error.errorType}</p>
-                <p className="text-xs text-gray-400 truncate">{error.errorMessage}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {new Date(error.createdAt).toLocaleTimeString()}
-                </p>
-              </div>
+              <p className="font-medium text-sm truncate">{error.errorType}</p>
+              <p className="text-xs opacity-75 mt-1 truncate">{error.errorMessage}</p>
             </motion.div>
-          ))
-        ) : (
-          <div className="text-center py-8 text-gray-400">
-            <p>No errors detected</p>
-          </div>
-        )}
+          ))}
+        </AnimatePresence>
       </div>
     </motion.div>
   );
