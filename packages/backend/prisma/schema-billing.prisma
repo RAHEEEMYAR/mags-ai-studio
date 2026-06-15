@@ -1,0 +1,427 @@
+// PHASE 12 - Billing, Subscriptions & Payments System
+// Add these models to your existing schema.prisma
+
+// ==================== SUBSCRIPTION & PLANS ====================
+model Plan {
+  id                    String                @id @default(cuid())
+  name                  String                @unique
+  description           String?
+  slug                  String                @unique
+  
+  // Pricing
+  monthlyPrice          Float                 @default(0)
+  yearlyPrice           Float?
+  setupFee              Float                 @default(0)
+  
+  // Features
+  maxUsers              Int?                  // null = unlimited
+  maxProjects           Int?                  // null = unlimited
+  maxApiCalls           Int?                  // monthly, null = unlimited
+  maxAgents             Int?                  // null = unlimited
+  maxDeployments        Int?                  // null = unlimited
+  
+  // Usage-based features
+  aiTokenLimit          Int?                  // tokens/month, null = unlimited
+  storageGb             Int?                  // GB, null = unlimited
+  supportLevel          String                @default("community")
+  
+  // Features list
+  features              String[]              // JSON array of feature flags
+  
+  // Status
+  isActive              Boolean               @default(true)
+  isPopular             Boolean               @default(false)
+  isFeatured            Boolean               @default(false)
+  
+  // Relations
+  subscriptions         Subscription[]
+  billingCycles         BillingCycle[]
+  
+  metadata              Json?                 // Additional config
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  
+  @@index([slug])
+  @@index([isActive])
+}
+
+model Subscription {
+  id                    String                @id @default(cuid())
+  userId                String
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  planId                String
+  plan                  Plan                  @relation(fields: [planId], references: [id])
+  
+  // Status
+  status                SubscriptionStatus    @default(ACTIVE)
+  
+  // Stripe
+  stripeSubscriptionId  String?               @unique
+  stripeCustomerId      String?
+  
+  // Billing period
+  billingCycle          BillingCycleType      @default(MONTHLY)
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  
+  // Auto-renewal
+  autoRenew             Boolean               @default(true)
+  renewalDate           DateTime?
+  
+  // Trial
+  trialStartDate        DateTime?
+  trialEndDate          DateTime?
+  isTrialActive         Boolean               @default(false)
+  
+  // Cancellation
+  canceledAt            DateTime?
+  cancelReason          String?
+  canceledBy            String?               // 'user' or 'admin'
+  
+  // Relationships
+  billingCycles         BillingCycle[]
+  payments              Payment[]
+  invoices              Invoice[]
+  usageRecords          UsageRecord[]
+  
+  metadata              Json?                 // Custom data
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  
+  @@unique([userId, id])
+  @@index([userId])
+  @@index([status])
+  @@index([stripeSubscriptionId])
+  @@index([renewalDate])
+}
+
+model BillingCycle {
+  id                    String                @id @default(cuid())
+  subscriptionId        String
+  subscription          Subscription          @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  planId                String
+  plan                  Plan                  @relation(fields: [planId], references: [id])
+  
+  // Period
+  startDate             DateTime
+  endDate               DateTime
+  cycleNumber           Int                   // 1st cycle, 2nd cycle, etc.
+  
+  // Amounts
+  baseAmount            Float                 // Plan base cost
+  usageAmount           Float                 @default(0)  // Usage-based additions
+  discountAmount        Float                 @default(0)
+  taxAmount             Float                 @default(0)
+  totalAmount           Float                 // Final amount due
+  
+  // Status
+  status                BillingCycleStatus    @default(ACTIVE)
+  
+  // Invoice
+  invoiceId             String?
+  invoice               Invoice?              @relation(fields: [invoiceId], references: [id])
+  
+  // Proration info
+  prorationAmount       Float                 @default(0)
+  prorationReason       String?
+  
+  // Relationships
+  usageRecords          UsageRecord[]
+  
+  metadata              Json?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  
+  @@unique([subscriptionId, cycleNumber])
+  @@index([subscriptionId])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([status])
+}
+
+// ==================== PAYMENTS ====================
+model Payment {
+  id                    String                @id @default(cuid())
+  subscriptionId        String
+  subscription          Subscription          @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  userId                String
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Stripe
+  stripePaymentIntentId String?               @unique
+  stripeChargeId        String?               @unique
+  
+  // Amount
+  amount                Float
+  currency              String                @default("USD")
+  
+  // Status
+  status                PaymentStatus         @default(PENDING)
+  paymentMethod         String                // 'card', 'bank_transfer', etc.
+  
+  // Timestamps
+  paidAt                DateTime?
+  failedAt              DateTime?
+  refundedAt            DateTime?
+  
+  // Failure info
+  failureReason         String?
+  failureCode           String?
+  
+  // Refund
+  refundAmount          Float?                @default(0)
+  refundReason          String?
+  
+  // Idempotency
+  idempotencyKey        String                @unique @default(cuid())
+  
+  metadata              Json?                 // Receipt details, etc.
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([paidAt])
+  @@index([stripePaymentIntentId])
+}
+
+// ==================== INVOICES ====================
+model Invoice {
+  id                    String                @id @default(cuid())
+  invoiceNumber         String                @unique // INV-2024-001
+  subscriptionId        String
+  subscription          Subscription          @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  userId                String
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Stripe
+  stripeInvoiceId       String?               @unique
+  
+  // Period
+  periodStart           DateTime
+  periodEnd             DateTime
+  
+  // Amounts
+  subtotal              Float
+  discountAmount        Float                 @default(0)
+  taxAmount             Float                 @default(0)
+  totalAmount           Float
+  amountPaid            Float                 @default(0)
+  amountDue             Float
+  
+  // Status
+  status                InvoiceStatus         @default(DRAFT)
+  dueDate               DateTime?
+  
+  // Payment
+  paidAt                DateTime?
+  paymentMethodId       String?
+  
+  // PDF
+  pdfUrl                String?
+  pdfGeneratedAt        DateTime?
+  
+  // Billing cycles
+  billingCycles         BillingCycle[]
+  
+  // Line items
+  lineItems             InvoiceLineItem[]
+  
+  metadata              Json?                 // Tax ID, etc.
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  
+  @@unique([userId, invoiceNumber])
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([paidAt])
+  @@index([stripeInvoiceId])
+}
+
+model InvoiceLineItem {
+  id                    String                @id @default(cuid())
+  invoiceId             String
+  invoice               Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  description           String
+  quantity              Float                 @default(1)
+  unitPrice             Float
+  total                 Float
+  
+  type                  String                // 'subscription', 'usage', 'addon', etc.
+  
+  metadata              Json?                 // Type-specific data
+  
+  @@index([invoiceId])
+}
+
+// ==================== CREDIT WALLET ====================
+model CreditWallet {
+  id                    String                @id @default(cuid())
+  userId                String                @unique
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Balance
+  balance               Float                 @default(0)
+  totalEarned           Float                 @default(0)
+  totalSpent            Float                 @default(0)
+  
+  // Freeze
+  isFrozen              Boolean               @default(false)
+  frozenReason          String?
+  
+  // Transactions
+  transactions          CreditTransaction[]
+  
+  metadata              Json?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  
+  @@index([userId])
+}
+
+model CreditTransaction {
+  id                    String                @id @default(cuid())
+  walletId              String
+  wallet                CreditWallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  
+  userId                String
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Transaction
+  type                  CreditTransactionType // PURCHASE, USAGE, REFUND, BONUS
+  amount                Float                 // Can be negative for usage
+  balanceBefore         Float
+  balanceAfter          Float
+  
+  // Reference
+  referenceType         String?               // 'payment', 'usage', 'refund'
+  referenceId           String?               // Payment ID, Usage ID, etc.
+  
+  // Description
+  description           String
+  reason                String?               // Why the transaction occurred
+  
+  // Metadata
+  metadata              Json?                 // Type-specific data
+  
+  createdAt             DateTime              @default(now())
+  
+  @@index([walletId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([referenceId])
+}
+
+// ==================== USAGE TRACKING ====================
+model UsageRecord {
+  id                    String                @id @default(cuid())
+  subscriptionId        String
+  subscription          Subscription          @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  billingCycleId        String
+  billingCycle          BillingCycle          @relation(fields: [billingCycleId], references: [id], onDelete: Cascade)
+  
+  userId                String
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Usage type
+  usageType             UsageType             // AI_TOKENS, AGENTS, DEPLOYMENTS, etc.
+  quantity              Float
+  unit                  String                // 'tokens', 'tasks', 'hours'
+  
+  // Pricing
+  unitPrice             Float
+  totalCost             Float
+  
+  // Reference
+  referenceType         String?               // 'chat', 'agent', 'deployment'
+  referenceId           String?               // Chat ID, Agent ID, etc.
+  
+  // Metadata
+  metadata              Json?
+  
+  createdAt             DateTime              @default(now())
+  
+  @@index([subscriptionId])
+  @@index([billingCycleId])
+  @@index([userId])
+  @@index([usageType])
+  @@index([createdAt])
+}
+
+// ==================== ENUMS ====================
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  PAUSED
+  CANCELED
+  EXPIRED
+}
+
+enum BillingCycleStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum BillingCycleType {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PAID
+  PARTIALLY_PAID
+  PAST_DUE
+  CANCELLED
+  ARCHIVED
+}
+
+enum CreditTransactionType {
+  PURCHASE
+  USAGE
+  REFUND
+  BONUS
+  ADJUSTMENT
+}
+
+enum UsageType {
+  AI_TOKENS
+  AGENTS
+  DEPLOYMENTS
+  STORAGE
+  API_CALLS
+  REPO_INDEXING
+  APP_GENERATION
+}
+
+// ==================== Add to User Model ====================
+// user User                @relation(fields: [userId], references: [id])
+// subscription         Subscription?
+// payments             Payment[]
+// invoices             Invoice[]
+// creditWallet         CreditWallet?
+// creditTransactions   CreditTransaction[]
+// usageRecords         UsageRecord[]
